@@ -1,8 +1,8 @@
-#include <stdio.h>
-#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #define BUFSIZE 1024
 
@@ -23,6 +23,21 @@ struct memory_map_entry
   uint64_t inode;
   char * path;
 };
+
+void print_memory_map_entry(struct memory_map_entry e)
+{
+  printf(
+      "memory_map_entry { mem_start: %p, mem_end: %p, perms: %d, offset: %llu, device_major: %d, device_minor: %d, inode: %llu, path: '%s' }\n",
+      e.mem_start,
+      e.mem_end,
+      e.perms,
+      e.offset,
+      e.device_major,
+      e.device_minor,
+      e.inode,
+      e.path
+  );
+}
 
 // statically allocate space so we can do some processing on memory maps
 // without using malloc, which may in turn update the memory maps
@@ -99,7 +114,7 @@ int parse_memory_map(char lines[BUFSIZE][BUFSIZE], struct memory_map_entry mem_m
 
     char *mem_start_tok, *mem_end_tok;
     mem_start_tok = strtok(addr_range_tok, "-");
-    mem_end_tok = strtok(addr_range_tok, "-");
+    mem_end_tok = strtok(NULL, "-");
     if (mem_start_tok == NULL || mem_end_tok == NULL)
     {
       puts("addr range was not hyphen separate");
@@ -108,7 +123,7 @@ int parse_memory_map(char lines[BUFSIZE][BUFSIZE], struct memory_map_entry mem_m
 
     char *device_major_tok, *device_minor_tok;
     device_major_tok = strtok(device_major_minor_tok, ":");
-    device_minor_tok = strtok(device_major_minor_tok, ":");
+    device_minor_tok = strtok(NULL, ":");
     if (mem_start_tok == NULL || mem_end_tok == NULL)
     {
       puts("addr range was not hyphen separate");
@@ -151,27 +166,88 @@ int parse_memory_map(char lines[BUFSIZE][BUFSIZE], struct memory_map_entry mem_m
   return lines_read;
 }
 
+int diff_memory_maps(
+  struct memory_map_entry mem_map_buf_1[BUFSIZE],
+  int buf_1_size,
+  struct memory_map_entry mem_map_buf_2[BUFSIZE],
+  int buf_2_size
+)
+{
+  bool diff_found = false;
+  int buf_1_idx = 0, buf_2_idx = 0;
+  while (buf_1_idx < buf_1_size && buf_2_idx < buf_2_size)
+  {
+    struct memory_map_entry entry_1 = mem_map_buf_1[buf_1_idx];
+    struct memory_map_entry entry_2 = mem_map_buf_2[buf_2_idx];
+
+    // completely new entry
+    if (entry_1.mem_start != entry_2.mem_start && entry_1.mem_end != entry_2.mem_end)
+    {
+      if (entry_1.mem_start < entry_2.mem_start)
+      {
+        puts("MemoryMap1 contains entry that MemoryMap2 doesn't have");
+        print_memory_map_entry(entry_1);
+        buf_1_idx++;
+      }
+      else
+      {
+        puts("MemoryMap2 contains entry that MemoryMap2 doesn't have");
+        print_memory_map_entry(entry_2);
+        buf_2_idx++;
+      }
+      diff_found = true;
+    }
+    else
+    {
+      // region expanded from start (don't know if this is possible)
+      if (entry_1.mem_start != entry_2.mem_start)
+      {
+        puts("Entry expanded from start");
+        print_memory_map_entry(entry_1);
+        print_memory_map_entry(entry_2);
+        diff_found = true;
+      }
+      // region expanded from end
+      else if (entry_1.mem_end != entry_2.mem_end)
+      {
+        puts("Entry expanded from end");
+        print_memory_map_entry(entry_1);
+        print_memory_map_entry(entry_2);
+        diff_found = true;
+      }
+      buf_1_idx++;
+      buf_2_idx++;
+    }
+  }
+  if (!diff_found)
+  {
+    puts("Memory maps are the same");
+  }
+  return 0;
+}
+
 int main(int argc, char *argv[])
 {
-  int num_entries = parse_memory_map(char_buf_1, mem_map_buf_1);
-  if (num_entries == -1)
+  int num_entries_1 = parse_memory_map(char_buf_1, mem_map_buf_1);
+  if (num_entries_1 == -1)
   {
     puts("failed to parse memory map");
   }
 
-  for (int i = 0; i < num_entries; i++)
-  {
-    printf(
-        "mem_start: %p, mem_end: %p, perms: %d, offset: %llu, device_major: %d, device_minor: %d, inode: %llu, path: '%s'\n",
-        mem_map_buf_1[i].mem_start,
-        mem_map_buf_1[i].mem_end,
-        mem_map_buf_1[i].perms,
-        mem_map_buf_1[i].offset,
-        mem_map_buf_1[i].device_major,
-        mem_map_buf_1[i].device_minor,
-        mem_map_buf_1[i].inode,
-        mem_map_buf_1[i].path
-    );
+  for (int i = 0; i < 10000; i++) {
+    void *chunk = malloc(4096);
   }
+
+  int num_entries_2 = parse_memory_map(char_buf_2, mem_map_buf_2);
+  if (num_entries_2 == -1)
+  {
+    puts("failed to parse memory map");
+  }
+
+  if (diff_memory_maps(mem_map_buf_1, num_entries_1, mem_map_buf_2, num_entries_2) == -1)
+  {
+    puts("failed to diff memory maps");
+  }
+
   return 0;
 }
