@@ -39,9 +39,6 @@ void print_memory_map_entry(struct memory_map_entry e)
   );
 }
 
-#define DIFF_TY_NEW 0
-#define DIFF_TY_MODIFICATION 1
-
 enum memory_map_diff_ty
 {
   New,
