@@ -39,6 +39,44 @@ void print_memory_map_entry(struct memory_map_entry e)
   );
 }
 
+#define DIFF_TY_NEW 0
+#define DIFF_TY_MODIFICATION 1
+
+enum memory_map_diff_ty
+{
+  New,
+  Modification,
+};
+
+struct memory_map_diff
+{
+  enum memory_map_diff_ty ty;
+  uint64_t diff_size;
+};
+
+void print_memory_map_diff(struct memory_map_diff d)
+{
+  char *ty_msg;
+  if (d.ty == New)
+  {
+    ty_msg = "Ty";
+  }
+  else if (d.ty == Modification)
+  {
+    ty_msg = "Modification";
+  }
+  else
+  {
+    printf("unknown diff ty: %d\n", d.ty);
+    exit(1);
+  }
+  printf(
+      "memory_map_diff { ty: %s, diff_size: %llu }\n",
+      ty_msg,
+      d.diff_size
+  );
+}
+
 // statically allocate space so we can do some processing on memory maps
 // without using malloc, which may in turn update the memory maps
 char char_buf_1[BUFSIZE][BUFSIZE];
@@ -46,6 +84,8 @@ char char_buf_2[BUFSIZE][BUFSIZE];
 
 struct memory_map_entry mem_map_buf_1[BUFSIZE];
 struct memory_map_entry mem_map_buf_2[BUFSIZE];
+
+struct memory_map_diff diff_buf[BUFSIZE];
 
 // reads a file line by line in to a provided buffer
 int read_file_lines(char buf[BUFSIZE][BUFSIZE], char * file_name)
@@ -170,10 +210,11 @@ int diff_memory_maps(
   struct memory_map_entry mem_map_buf_1[BUFSIZE],
   int buf_1_size,
   struct memory_map_entry mem_map_buf_2[BUFSIZE],
-  int buf_2_size
+  int buf_2_size,
+  struct memory_map_diff diff_buf[BUFSIZE]
 )
 {
-  bool diff_found = false;
+  int diffs_found = 0;
   int buf_1_idx = 0, buf_2_idx = 0;
   while (buf_1_idx < buf_1_size && buf_2_idx < buf_2_size)
   {
@@ -185,45 +226,50 @@ int diff_memory_maps(
     {
       if (entry_1.mem_start < entry_2.mem_start)
       {
-        puts("MemoryMap1 contains entry that MemoryMap2 doesn't have");
-        print_memory_map_entry(entry_1);
+        diff_buf[diffs_found++] = (struct memory_map_diff) {
+          .ty = New,
+          .diff_size = entry_2.mem_start - entry_1.mem_start,
+        };
         buf_1_idx++;
       }
       else
       {
-        puts("MemoryMap2 contains entry that MemoryMap2 doesn't have");
-        print_memory_map_entry(entry_2);
+        diff_buf[diffs_found++] = (struct memory_map_diff) {
+          .ty = New,
+          .diff_size = entry_1.mem_start - entry_2.mem_start,
+        };
         buf_2_idx++;
       }
-      diff_found = true;
     }
     else
     {
       // region expanded from start (don't know if this is possible)
       if (entry_1.mem_start != entry_2.mem_start)
       {
-        puts("Entry expanded from start");
-        print_memory_map_entry(entry_1);
-        print_memory_map_entry(entry_2);
-        diff_found = true;
+        int diff_size = entry_1.mem_start > entry_2.mem_start
+          ? entry_1.mem_start - entry_2.mem_start
+          : entry_2.mem_start - entry_1.mem_start;
+        diff_buf[diffs_found++] = (struct memory_map_diff) {
+          .ty = Modification,
+          .diff_size = diff_size,
+        };
       }
       // region expanded from end
       else if (entry_1.mem_end != entry_2.mem_end)
       {
-        puts("Entry expanded from end");
-        print_memory_map_entry(entry_1);
-        print_memory_map_entry(entry_2);
-        diff_found = true;
+        int diff_size = entry_1.mem_end > entry_2.mem_end
+          ? entry_1.mem_end - entry_2.mem_end
+          : entry_2.mem_end - entry_1.mem_end;
+        diff_buf[diffs_found++] = (struct memory_map_diff) {
+          .ty = Modification,
+          .diff_size = diff_size,
+        };
       }
       buf_1_idx++;
       buf_2_idx++;
     }
   }
-  if (!diff_found)
-  {
-    puts("Memory maps are the same");
-  }
-  return 0;
+  return diffs_found;
 }
 
 int main(int argc, char *argv[])
@@ -232,6 +278,7 @@ int main(int argc, char *argv[])
   if (num_entries_1 == -1)
   {
     puts("failed to parse memory map");
+    exit(1);
   }
 
   for (int i = 0; i < 10000; i++) {
@@ -242,11 +289,19 @@ int main(int argc, char *argv[])
   if (num_entries_2 == -1)
   {
     puts("failed to parse memory map");
+    exit(1);
   }
 
-  if (diff_memory_maps(mem_map_buf_1, num_entries_1, mem_map_buf_2, num_entries_2) == -1)
+  int num_diffs = diff_memory_maps(mem_map_buf_1, num_entries_1, mem_map_buf_2, num_entries_2, diff_buf);
+  if (num_diffs == -1)
   {
     puts("failed to diff memory maps");
+    exit(1);
+  }
+
+  printf("found %d diffs\n", num_diffs);
+  for (int i = 0; i < num_diffs; i++) {
+    print_memory_map_diff(diff_buf[i]);
   }
 
   return 0;
