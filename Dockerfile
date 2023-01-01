@@ -1,5 +1,6 @@
-FROM gcc:12
+FROM fedora:35
 COPY . /usr/src/malloc-inspector
 WORKDIR /usr/src/malloc-inspector
+RUN sudo dnf install -y strace gcc make findutils
 RUN make
-CMD ["./build/malloc-inspector"]
+CMD ["./run.sh"]

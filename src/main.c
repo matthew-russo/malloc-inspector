@@ -271,6 +271,7 @@ int diff_memory_maps(
 
 int main(int argc, char *argv[])
 {
+  puts("STRACE-INFO : beginning of program");
   int num_entries_1 = parse_memory_map(char_buf_1, mem_map_buf_1);
   if (num_entries_1 == -1)
   {
@@ -278,9 +279,13 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  for (int i = 0; i < 10000; i++) {
+  puts("STRACE-INFO : finished reads");
+
+  for (int i = 0; i < 1; i++) {
     void *chunk = malloc(4096);
   }
+
+  puts("STRACE-INFO : finished mallocs");
 
   int num_entries_2 = parse_memory_map(char_buf_2, mem_map_buf_2);
   if (num_entries_2 == -1)
@@ -288,6 +293,8 @@ int main(int argc, char *argv[])
     puts("failed to parse memory map");
     exit(1);
   }
+
+  puts("STRACE-INFO : finished reads");
 
   int num_diffs = diff_memory_maps(mem_map_buf_1, num_entries_1, mem_map_buf_2, num_entries_2, diff_buf);
   if (num_diffs == -1)
@@ -301,5 +308,6 @@ int main(int argc, char *argv[])
     print_memory_map_diff(diff_buf[i]);
   }
 
+  puts("STRACE-INFO : end of program");
   return 0;
 }
