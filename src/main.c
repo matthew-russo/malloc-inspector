@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 
 #define BUFSIZE 1024
 
@@ -56,7 +57,7 @@ void print_memory_map_diff(struct memory_map_diff d)
   char *ty_msg;
   if (d.ty == New)
   {
-    ty_msg = "Ty";
+    ty_msg = "New";
   }
   else if (d.ty == Modification)
   {
@@ -269,6 +270,17 @@ int diff_memory_maps(
   return diffs_found;
 }
 
+void *alloc_loop(void *arg)
+{
+  int *start = (int *) arg;
+  // spin until we're ready to start
+  while (__atomic_load_n(start, __ATOMIC_ACQUIRE) == 0) {}
+  for (int i = 0; i < 1000; i++) {
+    void *chunk = malloc(4096);
+  }
+  return NULL;
+}
+
 int main(int argc, char *argv[])
 {
   puts("STRACE-INFO : beginning of program");
@@ -281,9 +293,17 @@ int main(int argc, char *argv[])
 
   puts("STRACE-INFO : finished reads");
 
-  for (int i = 0; i < 1; i++) {
-    void *chunk = malloc(4096);
-  }
+  int start1 = 0;
+  int start2 = 0;
+  pthread_t t1;
+  pthread_t t2;
+  pthread_create(&t1, NULL, alloc_loop, &start1);
+  pthread_create(&t2, NULL, alloc_loop, &start2);
+  puts("STRACE-INFO : created threads");
+  __atomic_store_n(&start1, 1, __ATOMIC_RELEASE);
+  __atomic_store_n(&start2, 1, __ATOMIC_RELEASE);
+  pthread_join(t1, NULL);
+  pthread_join(t2, NULL);
 
   puts("STRACE-INFO : finished mallocs");
 
